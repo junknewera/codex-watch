@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex Watch</title><style>
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0b1018;color:#e9effa}
+*{box-sizing:border-box}body{margin:0 auto;max-width:840px;padding:24px 18px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+h1{font-size:26px;margin:0}h2{font-size:17px}small,.muted{color:#8b99af}
+.pill{border:1px solid #344158;border-radius:99px;padding:7px 12px;color:#a5b5cd}
+.panel{background:#151d2a;border:1px solid #2b3548;border-radius:18px;padding:20px;margin:15px 0}
+input,button{border-radius:10px;padding:12px;background:#0c1421;color:white;border:1px solid #39465a;font:inherit}
+input{width:100%;margin:6px 0 12px}button{background:#4d7aff;border:0;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.metric{font-size:30px;font-weight:700;margin:10px 0}
+.agent{cursor:pointer}.agent:hover{border-color:#5e83e9}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.status{font-size:12px;border-radius:20px;background:#26364c;padding:5px 9px}
+.running{color:#76e8b1}.done{color:#9bb6ff}.idle{color:#d2a977}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;color:#b9c6d8}
+@media(max-width:540px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.panel{padding:14px}body{padding:15px}}
+</style></head><body>
+<header><div><small>LOCAL AGENT MONITOR</small><h1>Codex Watch</h1></div><span class="pill" id="connection">Offline</span></header>
+<section class="panel" id="setup"><h2>Подключение к компьютеру</h2>
+<label>Токен из терминала сервера<input id="token" type="password" placeholder="Access token" autocomplete="off"></label>
+<button id="connect">Подключиться</button><p class="muted">Телефон и компьютер должны быть в одной локальной сети. Не открывайте порт в интернет.</p></section>
+<section class="grid">
+<div class="panel"><small>Всего</small><div class="metric" id="total">0</div></div>
+<div class="panel"><small>Работают</small><div class="metric" id="running">0</div></div>
+<div class="panel"><small>Завершены</small><div class="metric" id="done">0</div></div>
+</section><h2>Сессии Codex CLI</h2><div id="agents"><p class="muted">Подключитесь к серверу, чтобы увидеть агентов.</p></div>
+<section class="panel" id="details" hidden><div class="row"><h2>Последние события</h2><button id="close">Закрыть</button></div><div id="events"></div></section>
+<script>
+const $=id=>document.getElementById(id);
+const token=$("token");token.value=sessionStorage.getItem("codex-token")||"";
+const statuses={running:"В работе",done:"Ход завершён",idle:"Нет активности",interrupted:"Прерван"};
+let agents=[];
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function render(list){
+ agents=list;$("total").textContent=list.length;$("running").textContent=list.filter(a=>a.status==="running").length;
+ $("done").textContent=list.filter(a=>a.status==="done").length;
+ const wrap=$("agents");wrap.replaceChildren();
+ if(!list.length)wrap.append(el("p","muted","За последние 24 часа сессий нет."));
+ list.forEach(a=>{const card=el("section","panel agent");
+ const row=el("div","row"),name=el("strong","",a.project.split(/[\\/]/).filter(Boolean).pop()||a.id);
+ const badge=el("span","status "+a.status,statuses[a.status]||a.status);
+ row.append(name,badge);card.append(row,el("small","",a.project),el("p","muted",new Date(a.updated*1000).toLocaleString()));
+ card.onclick=()=>{const out=$("events");out.replaceChildren();(a.events||[]).forEach(e=>out.append(el("pre","",e.time+" · "+e.type+"\n"+e.text)));$("details").hidden=false;$("details").scrollIntoView({behavior:"smooth"})};
+ wrap.append(card)});
+}
+async function refresh(){
+ const t=token.value.trim();if(!t)return;
+ try{const r=await fetch("/api/status",{headers:{Authorization:"Bearer "+t},cache:"no-store"});
+ if(!r.ok)throw Error(r.status===401?"Неверный токен":"HTTP "+r.status);
+ const data=await r.json();render(data.sessions||[]);$("connection").textContent="● Online";$("connection").style.color="#75dfac";
+ $("setup").hidden=true;
+ }catch(e){$("connection").textContent="Offline";$("connection").style.color="#f6a4a4";$("setup").hidden=false;$("agents").replaceChildren(el("p","muted",String(e.message)));}
+}
+$("connect").onclick=()=>{sessionStorage.setItem("codex-token",token.value.trim());refresh()};
+$("close").onclick=()=>{$("details").hidden=true};
+if(token.value)refresh();setInterval(refresh,3000);
+</script></body></html>
